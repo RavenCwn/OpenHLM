@@ -27,7 +27,7 @@ class StreamMode(Enum):
     POSE_PAUSE = 2
 
 
-PICO_XROBOT_INDEX = {
+PICO_XROBOT_INDEX = {# PICO 人体骨架节点的名称
     "Pelvis": 0,
     "Left_Hip": 1,
     "Right_Hip": 2,
@@ -339,8 +339,8 @@ class GMRPoseStreamer:
         self.toggle_data_abort_last = False
         self._pending_toggle_data_collection = False
         self._pending_toggle_data_abort = False
-        self.action_hand_left = 0.0
-        self.action_hand_right = 0.0
+        self.action_hand_left = 1.0
+        self.action_hand_right = 1.0 # TODO: 1.0 means open, 0.0 means closed
 
         self.prev_stamp_ns = None
         self.prev_joint_pos = None
@@ -382,13 +382,13 @@ class GMRPoseStreamer:
                 new_mode = StreamMode.POSE_PAUSE
         elif self.current_mode == StreamMode.POSE_PAUSE:
             if not left_menu_button:
-                new_mode = StreamMode.POSE
+                new_mode = StreamMode.POSE # 按下menu会暂停，松开menu会恢复POSE模式
 
         if new_mode != self.current_mode:
             print(f"[State] {self.current_mode.name} -> {new_mode.name}")
 
             # Clear state when exiting POSE mode
-            if self.current_mode == StreamMode.POSE:
+            if self.current_mode == StreamMode.POSE: # new_mode是POSE_PAUSE；即开始暂停，清除上一帧缓存的数据
                 self.frame_buffer.clear()
                 self.prev_stamp_ns = None
                 self.prev_joint_pos = None
@@ -399,12 +399,12 @@ class GMRPoseStreamer:
                 print("[State] Cleared buffers on POSE exit")
 
             # Reset yaw when entering POSE mode
-            if new_mode == StreamMode.POSE:
+            if new_mode == StreamMode.POSE: # 即从暂停恢复到POSE模式，重置yaw
                 self.quat_processor.reset()
                 self.pending_start_command = True
                 print("[State] Reset yaw, will send start command after first frame")
 
-            self.current_mode = new_mode
+            self.current_mode = new_mode 
         self.prev_left_menu_button = left_menu_button
 
         # Pause: skip processing
@@ -412,7 +412,7 @@ class GMRPoseStreamer:
             time.sleep(0.01)
             return
 
-        sample = self.gmr_reader.get_latest()
+        sample = self.gmr_reader.get_latest() 
         if sample is None:
             time.sleep(0.005)
             return
@@ -443,13 +443,17 @@ class GMRPoseStreamer:
         ## use left_trigger to control action_hand_left 
         # left_trigger > 0.8 → open (0.0), left_trigger <= 0.2 → close (1.0), else hold last state
         if left_trigger > 0.8 and self.action_hand_left == 1.0:
+            print("[State] Left hand open")
             self.action_hand_left = 0.0
         elif left_trigger <= 0.2 and self.action_hand_left == 0.0:
+            print("[State] Left hand close")
             self.action_hand_left = 1.0
 
         if right_trigger > 0.8 and self.action_hand_right == 1.0:
+            print("[State] Right hand close")
             self.action_hand_right = 0.0
         elif right_trigger <= 0.2 and self.action_hand_right == 0.0:
+            print("[State] Right hand open")
             self.action_hand_right = 1.0
 
         curr_stamp_ns = int(sample["timestamp_ns"])
@@ -502,7 +506,7 @@ class GMRPoseStreamer:
         buffer_is_full = len(self.frame_buffer["frame_index"]) >= self.num_frames_to_send
         if buffer_is_full:
             n = len(self.frame_buffer["frame_index"])
-            numpy_data = {
+            numpy_data = { # TODO
                 "joint_pos_real": np.stack(self.frame_buffer["joint_pos_real"], axis=0),
                 "joint_vel_real": np.stack(self.frame_buffer["joint_vel_real"], axis=0),
                 "joint_pos": np.stack(self.frame_buffer["joint_pos"], axis=0),

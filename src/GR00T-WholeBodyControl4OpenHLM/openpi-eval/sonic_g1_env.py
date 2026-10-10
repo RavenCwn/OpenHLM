@@ -182,14 +182,17 @@ class SonicG1Env:
         control_hz: int = 30,
         mock: bool = False,
         vision_server_address: str = '192.168.123.164',  # g1
+        # vision_server_address: str = '192.168.10.150',  # g1
         vision_server_port: int = 5555,
         wrist_server_port: int = 5554,
         action_zmq_address: str = '*',
-        action_zmq_port: int = 5556,
+        action_zmq_port: int = 5556, # Python端口，绑定在PC上，供C++端发送动作数据
         body_state_address: str = '192.168.123.222',  # PC
-        body_state_port: int = 5557,
+        # body_state_address: str = '192.168.10.11',  # PC
+        body_state_port: int = 5557, # C++端口，绑定在PC上，供C++端发送机器人身体状态数据
         hand_state_address: str = '192.168.123.164',  # g1
-        hand_state_port: int = 5558,
+        # hand_state_address: str = '192.168.10.150',  # g1
+        hand_state_port: int = 5558, # 订阅手部状态
         num_frames_to_send: int = 2,
     ):
         """
@@ -321,7 +324,7 @@ class SonicG1Env:
         action_hand_right: float,
     ) -> None:
         """Pack and publish a multi-frame action via ZMQ.
-
+        通过 ZMQ 打包并发布多帧动作。
         Frames are buffered in a deque of size ``num_frames_to_send``. A ZMQ
         message is only sent once the buffer is full, so each message contains
         exactly ``num_frames_to_send`` consecutive frames stacked along axis 0.
@@ -371,9 +374,11 @@ class SonicG1Env:
 
     def _poll_state_zmq(self) -> None:
         """Drain the latest body and hand state messages from ZMQ (non-blocking).
-
+        以非阻塞方式从 ZMQ 读取最新的身体和手部状态消息。
         Updates ``self._latest_body_state`` and ``self._latest_hand_state`` caches.
+        更新 self._latest_body_state 和 self._latest_hand_state 缓存。
         Both sockets use CONFLATE=1, so at most one message is buffered per socket.
+        两个套接字都设置了 CONFLATE=1，因此每个套接字最多只缓存一条消息，即最新消息。
         """
         # Body state: topic prefix "g1_debug", remainder is msgpack payload
         _BODY_TOPIC = b"g1_debug"
@@ -397,7 +402,7 @@ class SonicG1Env:
     def reset(self, default_pose=None):
         """
         Reset the environment to the specified default pose.
-
+        重置机器人环境（environment）到指定的默认姿态。
         Args:
             default_pose: Target pose array (32 dims: 3 root + 29 joints) to reset to.
                          If None, uses DEFAULT_MIMIC_OBS_G1 (arms down position).
@@ -656,7 +661,7 @@ class SonicG1Env:
             except Exception as e:
                 print(f"Error reading state from ZMQ: {e}")
 
-        obs = {
+        obs = { # 头部相机、手腕相机、机器人状态信息(G1, 34维)
             "head_image_left": head_image_left,
             "left_wrist_image": left_wrist_image,
             "right_wrist_image": right_wrist_image,

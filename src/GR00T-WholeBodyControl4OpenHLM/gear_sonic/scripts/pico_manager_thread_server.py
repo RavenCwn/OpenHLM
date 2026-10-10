@@ -458,13 +458,13 @@ def process_smpl_joints(body_pose, global_orient, transl):
         Dictionary with processed joints and parameters
     """
     # Convert global_orient to quaternion and apply transformations (robust if utils missing)
-    global_orient_quat = angle_axis_to_quaternion(global_orient)
+    global_orient_quat = angle_axis_to_quaternion(global_orient) # 转成四元数
     if smpl_root_ytoz_up is not None:
         global_orient_quat = smpl_root_ytoz_up(global_orient_quat)
     global_orient_new = quaternion_to_angle_axis(global_orient_quat)
 
     # Compute joints and vertices using SMPL model (single forward pass)
-    joints = compute_human_joints(
+    joints = compute_human_joints( # SMPL 计算出的关节位置
         body_pose=body_pose[..., :63],
         global_orient=global_orient_new,
     )  # (*, 24, 3)
@@ -476,7 +476,7 @@ def process_smpl_joints(body_pose, global_orient, transl):
     global_orient_quat_inv = quat_inv(global_orient_quat).unsqueeze(1).repeat(1, joints.shape[1], 1)
     smpl_joints_local = quat_apply(global_orient_quat_inv, joints)
     global_orient_mat = quaternion_to_rotation_matrix(global_orient_quat)
-    global_orient_6d = global_orient_mat[..., :2].reshape(1, 6)
+    global_orient_6d = global_orient_mat[..., :2].reshape(1, 6) 
 
     return {
         "smpl_pose": body_pose,
@@ -582,7 +582,7 @@ def compute_from_body_poses(parent_indices: list, device, body_poses_np: np.ndar
     global_orient = torch.from_numpy(pose_aa[0]).float().to(device).unsqueeze(0)
     transl = torch.from_numpy(positions[0]).float().to(device).unsqueeze(0)
 
-    return process_smpl_joints(body_pose, global_orient, transl)
+    return process_smpl_joints(body_pose, global_orient, transl) # body_pose：
 
 
 # def compute_latest_frame(parent_indices: list, device) -> tuple[np.ndarray, np.ndarray]:
@@ -906,7 +906,7 @@ class ThreePointPose:
                         Used for FK-based calibration (no display required).
         """
         self.log_prefix = log_prefix
-        self.with_g1_robot = with_g1_robot
+        self.with_g1_robot = with_g1_robot # 可视化相关
         self.enable_waist_tracking = enable_waist_tracking
         self.enable_smpl_vis = enable_smpl_vis
 
@@ -1248,6 +1248,8 @@ class PoseStreamer:
             True  # Start with buffer cleared - wait for full buffer before first send
         )
         self.yaw_accumulator = YawAccumulator()
+        self.action_hand_left = 1.0
+        self.action_hand_right = 1.0 # TODO: 1.0 means open, 0.0 means closed
 
     def reset_yaw(self):
         """Called when entering pose mode. Resets yaw only.
@@ -1266,13 +1268,13 @@ class PoseStreamer:
 
     def run_once(self):
         """Execute one iteration of the pose streaming loop."""
-        sample = self.reader.get_latest()
+        sample = self.reader.get_latest() # 读取最新的Pico/XRT数据样本
 
         if sample is None:
             time.sleep(0.005)
             return
 
-        latest_data = compute_from_body_poses(
+        latest_data = compute_from_body_poses( # 
             self.parent_indices, self.device, sample["body_poses_np"]
         )
         (left_menu_button, left_trigger, right_trigger, left_grip, right_grip) = (
@@ -1293,6 +1295,22 @@ class PoseStreamer:
         self.toggle_data_collection_last = toggle_data_collection_tmp
         self.toggle_data_abort_last = toggle_data_abort_tmp
 
+        ## use left_trigger to control action_hand_left 
+        # left_trigger > 0.8 → open (0.0), left_trigger <= 0.2 → close (1.0), else hold last state
+        if left_trigger > 0.8 and self.action_hand_left == 1.0:
+            print("[State] Left hand open")
+            self.action_hand_left = 0.0
+        elif left_trigger <= 0.2 and self.action_hand_left == 0.0:
+            print("[State] Left hand close")
+            self.action_hand_left = 1.0
+
+        if right_trigger > 0.8 and self.action_hand_right == 1.0:
+            print("[State] Right hand close")
+            self.action_hand_right = 0.0
+        elif right_trigger <= 0.2 and self.action_hand_right == 0.0:
+            print("[State] Right hand open")
+            self.action_hand_right = 1.0
+
         left_hand_joints, right_hand_joints = compute_hand_joints_from_inputs(
             self.left_hand_ik_solver,
             self.right_hand_ik_solver,
@@ -1312,7 +1330,7 @@ class PoseStreamer:
         )
         curr_stamp_ns = int(sample.get("timestamp_ns", 0))
         step_ns = int(1e9 / max(1, self.target_fps))
-        if self.prev_stamp_ns is None:
+        if self.prev_stamp_ns is None: # 保存第一帧，等待下一帧
             self.prev_stamp_ns = curr_stamp_ns
             self.prev_smpl_pose_np = smpl_pose_np
             self.prev_smpl_joints_np = smpl_joints_np
@@ -1328,12 +1346,12 @@ class PoseStreamer:
         if self.next_target_ns > curr_stamp_ns:
             return
         denom = float(curr_stamp_ns - self.prev_stamp_ns)
-        alpha = float(self.next_target_ns - self.prev_stamp_ns) / denom if denom > 0.0 else 1.0
+        alpha = float(self.next_target_ns - self.prev_stamp_ns) / denom if denom > 0.0 else 1.0 # 计算插值系数 alpha
         if alpha < 0.0:
             alpha = 0.0
         elif alpha > 1.0:
             alpha = 1.0
-        use_joints = (1.0 - alpha) * self.prev_smpl_joints_np + alpha * smpl_joints_np
+        use_joints = (1.0 - alpha) * self.prev_smpl_joints_np + alpha * smpl_joints_np # 对三类姿态数据分别插值
         use_pose = _interp_pose_axis_angle(self.prev_smpl_pose_np, smpl_pose_np, alpha).astype(
             np.float32
         )
@@ -1343,6 +1361,7 @@ class PoseStreamer:
         N = len(self.frame_buffer["frame_index"])
 
         ##### From @Jiefeng for directly setting the joint position ######
+        # 把手肘的部分旋转映射到了机器人手腕上
         joint_pos = np.zeros(29)
         body_pose = use_pose.reshape(-1, 21, 3)
 
@@ -1463,6 +1482,8 @@ class PoseStreamer:
                 "heading_increment": np.array(
                     [self.yaw_accumulator.yaw_angle_change()], dtype=np.float32
                 ),
+                "action_hand_left": np.array([self.action_hand_left], dtype=np.float32),
+                "action_hand_right": np.array([self.action_hand_right], dtype=np.float32),
             }
 
             packed_message = pack_pose_message(numpy_data, topic="pose")

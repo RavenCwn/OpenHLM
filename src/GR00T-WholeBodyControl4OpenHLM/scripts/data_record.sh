@@ -18,8 +18,8 @@ cd "$REPO_ROOT"
 
 robot_ip="192.168.123.164"
 data_frequency=30
-task_name="20260521_1102_example"
-task_desc="example"
+task_name="20260930_1410_example" 
+task_desc="Walk forward to the table, put the green shell on the maroon mouse pad with the right hand."
 
 python gear_sonic/scripts/run_openhlm_data_record.py \
     --frequency "${data_frequency}" \

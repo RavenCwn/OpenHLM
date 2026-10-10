@@ -419,7 +419,7 @@ class G1Deploy {
     // know how many look-ahead frames are needed before the end.
     // =========================================================================
 
-    /// Gather root Z position from N future frames (1 value per frame).
+    /// Gather root Z position from N future frames (1 value per frame). 每num_frames帧收集根Z位置（每帧1个值）。
     bool GatherMotionRootZPositionMultiFrame(std::vector<double>& target_buffer, size_t offset, int num_frames = 5, int step_size = 5) {
       if (!current_motion_ || current_motion_->timesteps == 0) { 
         return false; 
@@ -442,14 +442,14 @@ class G1Deploy {
           }
         }
 
-        const auto motion_root_z_pos = current_motion_->BodyPositions(target_frame)[0][2];
+        const auto motion_root_z_pos = current_motion_->BodyPositions(target_frame)[0][2]; 
         target_buffer[offset + frame_idx * 1] = motion_root_z_pos;
       }
       return true;
     }
 
     /// Gather body positions from N future frames (3 values per body per frame).
-    /// If body_part_indexes is empty, gathers all bodies; otherwise only the specified subset.
+    /// If body_part_indexes is empty, gathers all bodies; otherwise only the specified subset. 每num_frames帧收集身体位置（每个身体每帧3个值）。如果body_part_indexes为空，则收集所有身体；否则仅收集指定的子集。
     bool GatherMotionBodyPositionsMultiFrame(std::vector<double>& target_buffer, size_t offset, int num_frames = 5, int step_size = 5, std::vector<int> body_part_indexes = {}) {
       if (!current_motion_ || current_motion_->timesteps == 0) { 
         return false; 
@@ -552,6 +552,7 @@ class G1Deploy {
      * ensures init_ref_data_root_rot_array_ is set when starting from frame 0.
      * This shared state is consumed by all orientation observation functions.
      */
+     // 举个用途上的例子：机器人起初朝东，参考动作起初朝北。记录各自起始朝向后，后续可以按照参考动作的相对转向变化控制机器人，而不是因为初始方向不同就要求它先转向北。
     void UpdateHeadingState() {
       if (!current_motion_ || current_motion_->timesteps == 0) { return; }
       if (current_motion_->GetNumBodyQuaternions() == 0) { return; }
@@ -609,6 +610,7 @@ class G1Deploy {
      *   - 1: robot heading only (heading setting: motion_anchor_ori_heading)
      *   - 2: reference first-frame heading (refheading setting: motion_anchor_ori_refheading)
      */
+     //参考动作接下来如何旋转，以及它相对于所选基准是什么姿态”的信息。
     bool GatherMotionAnchorOrientationMutiFrame(std::vector<double>& target_buffer, size_t offset, int num_frames = 5, int step_size = 5, int orientation_mode = 0) {
       if (!current_motion_ || current_motion_->timesteps == 0) {
         return false;
@@ -696,6 +698,7 @@ class G1Deploy {
      * Used by g1_dyn decoder in the refheading setting.
      * Output: 6D rotation = quat_to_6d(quat_inv(robot_heading) * ref_first_heading)
      */
+     // 机器人当前水平朝向，与参考动作当前帧的水平朝向，相差多少。
     bool GatherHeadingDiffRobotRef(std::vector<double>& target_buffer, size_t offset) {
       if (!current_motion_ || current_motion_->timesteps == 0) { return false; }
       if (current_motion_->GetNumBodyQuaternions() == 0) { return false; }
@@ -1660,13 +1663,13 @@ class G1Deploy {
       }
 
       // Run encoder inference (handles CPU→GPU transfer, inference, GPU→CPU transfer)
-      if (!encoder_engine_->Encode()) {
+      if (!encoder_engine_->Encode()) { // 执行Encode
         std::cerr << "✗ Error: Encoder inference failed" << std::endl;
         return false;
       }
 
       // Access encoded tokens from encoder's internal buffer (already populated by Encode)
-      auto& token_buffer = encoder_engine_->GetTokenBuffer();
+      auto& token_buffer = encoder_engine_->GetTokenBuffer(); //获取编码器的token缓冲区
       const size_t token_dim = encoder_engine_->GetTokenDimension();
       
       // Validate token dimension matches expected size
@@ -1982,7 +1985,7 @@ class G1Deploy {
       
       // Process observations using pre-built active functions (no map lookup needed!)
       for (const auto& active_obs : active_obs_functions_) {
-        bool success = active_obs.function(obs_buffer_, active_obs.offset);
+        bool success = active_obs.function(obs_buffer_, active_obs.offset); 
         
         if (!success) {
           std::cout << "Error: Failed to gather observation: " << active_obs.name << std::endl;
@@ -3110,30 +3113,30 @@ class G1Deploy {
      */
     bool CreatePolicyCommand() {
       // Convert double observation to float and populate policy's internal input buffer
-      auto& obs_buffer_float = policy_engine_->GetInputBuffer();
+      auto& obs_buffer_float = policy_engine_->GetInputBuffer(); //将double类型的obs_buffer_转换为float类型的obs_buffer_float
       for (size_t i = 0; i < obs_buffer_.size(); i++) { 
         obs_buffer_float[i] = static_cast<float>(obs_buffer_[i]); 
       }
 
       // Run policy inference (handles CPU→GPU transfer, inference, GPU→CPU transfer)
-      if (!policy_engine_->Infer()) {
+      if (!policy_engine_->Infer()) { //实际调用推理
         std::cerr << "✗ Error: Control policy inference failed" << std::endl;
         return false;
       }
       
       // Access actions from control policy's internal buffer (already populated by Infer)
-      auto& action_buffer = policy_engine_->GetActionBuffer();
+      auto& action_buffer = policy_engine_->GetActionBuffer();  //模型输出的动作buffer
       float* floatarr = action_buffer.data();
       
       MotorCommand motor_command_tmp;
-      for (int i = 0; i < G1_NUM_MOTOR; i++) {
-        const double action_value = static_cast<double>(floatarr[isaaclab_to_mujoco[i]]) * g1_action_scale[i];
-        last_action[i] = static_cast<double>(floatarr[i]);
-        motor_command_tmp.q_target.at(i) = static_cast<float>(default_angles[i] + action_value);
-        motor_command_tmp.tau_ff.at(i) = 0.0;
-        motor_command_tmp.kp.at(i) = kps[i];
-        motor_command_tmp.kd.at(i) = kds[i];
-        motor_command_tmp.dq_target.at(i) = 0.0;
+      for (int i = 0; i < G1_NUM_MOTOR; i++) { // 将IsaacLab顺序的动作映射到硬件顺序的MotorCommand
+        const double action_value = static_cast<double>(floatarr[isaaclab_to_mujoco[i]]) * g1_action_scale[i]; // 模型输出x缩放系数
+        last_action[i] = static_cast<double>(floatarr[i]);  
+        motor_command_tmp.q_target.at(i) = static_cast<float>(default_angles[i] + action_value); // 默认角度+动作值
+        motor_command_tmp.tau_ff.at(i) = 0.0; // 前馈力矩
+        motor_command_tmp.kp.at(i) = kps[i]; // 位置误差增益
+        motor_command_tmp.kd.at(i) = kds[i];  // 速度误差增益
+        motor_command_tmp.dq_target.at(i) = 0.0; // 目标关节速度
       }
       motor_command_buffer_.SetData(motor_command_tmp);
       return true;
@@ -3411,8 +3414,8 @@ class G1Deploy {
     /**
      * @brief Input thread body (100 Hz).
      *
-     * 1. Calls input_interface_->update() to poll keyboard / gamepad / network.
-     * 2. Forwards raw gamepad data from LowState to the active interface.
+     * 1. Calls input_interface_->update() to poll keyboard / gamepad / network. 获取键盘、游戏手柄或者网络输入。
+     * 2. Forwards raw gamepad data from LowState to the active interface. 将机器人 LowState 中的原始手柄数据转发给当前正在使用的输入接口。
      * 3. Calls input_interface_->handle_input() to translate flags into
      *    system-state changes (motion switching, planner commands, etc.).
      * 4. Optionally records / plays back input state for offline replay.
@@ -3421,10 +3424,10 @@ class G1Deploy {
       if (operator_state.stop) { return; }
       
       // Update input interface (poll for new data)
-      input_interface_->update();
+      input_interface_->update(); // 获取键盘、游戏手柄或者网络输入
       
       // Handle input using the interface - input handler updates everything directly
-      const std::shared_ptr<const LowState_> low_state_data = low_state_buffer_.GetDataWithTime().data;
+      const std::shared_ptr<const LowState_> low_state_data = low_state_buffer_.GetDataWithTime().data; // 读取最新机器人状态，提取 IMU 姿态
       std::array<double, 4> current_quat = {0.0, 0.0, 0.0, 1.0};
       if(low_state_data) {
         current_quat = float_to_double<4>(low_state_data->imu_state().quaternion());
@@ -3469,7 +3472,7 @@ class G1Deploy {
                                       reinitialize_heading_, heading_state_buffer_, has_planner, planner_state, movement_state_buffer_, current_motion_mutex_, report_temperature_);
       }
 
-      if (playback_input_file_ && program_state_ == ProgramState::CONTROL) {
+      if (playback_input_file_ && program_state_ == ProgramState::CONTROL) { // planner mode
         std::string line;
         PlannerState ps{false, false};
         auto &planner_state = has_planner ? planner_->planner_state_ : ps;
