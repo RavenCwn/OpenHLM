@@ -244,7 +244,7 @@ def main(config: ServerDataRecordConfig):
     print("Recorded control frequency: ", config.frequency)
     
    
-    speaker = Speaker(network_interface="enp129s0") # TODO
+    speaker = Speaker(network_interface="enp131s0")
     
     # Cache for latest ZMQ data (persists across loop iterations)
     latest_pico_data: Optional[Dict[str, np.ndarray]] = None
@@ -389,21 +389,17 @@ def main(config: ServerDataRecordConfig):
 
                 data_dict["t_state"] = int(time.time() * 1000)
 
-                # ---- Populate action data from body-state and Pico ZMQ ----
+                # ---- Populate action data from pico ZMQ ----
                 if latest_pico_data is not None:
-                    # last_action: 29 motor target angles in MuJoCo order,
-                    # already scaled and offset by the C++ publisher.
-                    joint_pos = None # 修改了joint_pos的获取方式
-                    if latest_body_state is not None:
-                        joint_pos = latest_body_state.get("last_action")
-
-                    if joint_pos is None:
-                        print("Warning: No last_action available from body state")
-            
+                    # joint_pos: stacked (N, 29), take the latest frame
+                    joint_pos = latest_pico_data.get("joint_pos_real")
                     body_quat_w = latest_pico_data.get("body_quat_w")
 
                     if joint_pos is not None and body_quat_w is not None:
-                        joint_data = list(joint_pos)
+                        if joint_pos.ndim == 2:
+                            joint_data = joint_pos[-1].tolist()
+                        else:
+                            joint_data = joint_pos.tolist()
 
                         # body_quat_w is (N, 4) in xyzw format, take the latest frame
                         if body_quat_w.ndim == 2:
@@ -432,7 +428,7 @@ def main(config: ServerDataRecordConfig):
 
                 # Record human motion data if enabled
                 if config.record_human_motion_data and latest_pico_data is not None:
-                    human_motion_data = latest_pico_data.get("human_motion_data") # TODO
+                    human_motion_data = latest_pico_data.get("human_motion_data")
                     if human_motion_data is not None:
                         pico_data_list.append({
                             "step": step_count,
@@ -512,3 +508,4 @@ def main(config: ServerDataRecordConfig):
 if __name__ == "__main__":
     config = tyro.cli(ServerDataRecordConfig)
     main(config)
+    
